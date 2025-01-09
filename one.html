@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Force Graph</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <div id="graph-container" style="width: 100vw; height: 100vh;"></div>
+
+  <!-- Load Three.js -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.153.0/build/three.min.js"></script>
+  <!-- Load 3D Force Graph -->
+  <script src="https://cdn.jsdelivr.net/npm/3d-force-graph@1.72.0/dist/3d-force-graph.min.js"></script>
+  <!-- Load RGBELoader -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/loaders/RGBELoader.js"></script>
+  <!-- Load EffectComposer and Passes -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.153.0/examples/js/postprocessing/EffectComposer.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.153.0/examples/js/postprocessing/RenderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.153.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+
+  <!-- Load Data -->
+  <script src="miserables.js"></script>
+  <!-- Script -->
+
+  <script>
+    const sizes = { width: window.innerWidth, height: window.innerHeight };
+
+    // Transform Data Function
+    function transformData(data) {
+      const nodesMap = new Map();
+      const links = [];
+
+      data.forEach(record => {
+        const { path } = record;
+        const { segments } = path;
+
+        segments.forEach(segment => {
+          const { start, end, relationship } = segment;
+
+          if (!nodesMap.has(start.identity)) {
+            nodesMap.set(start.identity, {
+              id: start.identity,
+              label: start.labels[0],
+              name: start.properties.name,
+              elementId: start.elementId
+            });
+          }
+
+          if (!nodesMap.has(end.identity)) {
+            nodesMap.set(end.identity, {
+              id: end.identity,
+              label: end.labels[0],
+              name: end.properties.name,
+              elementId: end.elementId
+            });
+          }
+
+          links.push({
+            source: start.identity,
+            target: end.identity,
+            relationshipType: relationship.type,
+            relationshipName: relationship.properties.name
+          });
+        });
+      });
+
+      const nodes = Array.from(nodesMap.values());
+      return { nodes, links };
+    }
+
+    const { nodes, links } = transformData(data);
+
+    // Create the 3D Force Graph
+    const Graph = ForceGraph3D()(document.getElementById("graph-container"))
+      .graphData({ nodes, links })
+      .nodeThreeObject(node => {
+        const lod = new THREE.LOD();
+
+        // High Detail
+        const highDetail = new THREE.Mesh(
+          new THREE.PlaneGeometry(30, 30),
+          new THREE.MeshBasicMaterial({ color: 0xffffff })
+        );
+        lod.addLevel(highDetail, 500);
+
+        // Medium Detail
+        const mediumDetail = new THREE.Mesh(
+          new THREE.SphereGeometry(10, 8, 8),
+          new THREE.MeshBasicMaterial({ color: 0xaaaaaa })
+        );
+        lod.addLevel(mediumDetail, 1500);
+
+        // Low Detail
+        const lowDetail = new THREE.Mesh(
+          new THREE.SphereGeometry(5, 8, 8),
+          new THREE.MeshBasicMaterial({ color: 0x555555 })
+        );
+        lod.addLevel(lowDetail, 3000);
+
+        return lod;
+      })
+      .linkWidth(2)
+      .linkColor("#aaa");
+
+    const scene = Graph.scene();
+    const camera = Graph.camera();
+    camera.position.set(1800, 150, 150);
+
+    const renderer = Graph.renderer();
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0x404040, 1);
+    scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(100, 100, 100);
+    scene.add(directionalLight);
+
+    // HDRI Environment
+    THREE.RGBELoader = RGBELoader;
+    const hdrLoader = new THREE.RGBELoader();
+    hdrLoader.load('./static/spaceStarsE2.hdr', texture => {
+      texture.mapping = THREE.EquirectangularReflectionMapping;
+      scene.background = texture;
+    });
+
+    // Resize Listener
+    window.addEventListener("resize", () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height);
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+
+    animate();
+  </script>
+</body>
+</html>
